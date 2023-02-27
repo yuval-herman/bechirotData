@@ -8,7 +8,7 @@ export default async function scrap(): Promise<Bechirot[]> {
 
   const res = await fetchKnessetInfo(1);
   const maxKnesset = Math.max(...res.KnessetsBullets.map((v) => v.ID));
-  const results = _.range(1, maxKnesset).map(async (i: number) => {
+  const results = _.range(0, maxKnesset).map(async (i: number) => {
     const { ElectionDate, Threshold, MandateVotes, EligibleCount, CleanVotes } =
       res.ElectionsKnessetDetails[0];
     const asParties: Party[] = res.ElectionsLists.map((p) => ({
