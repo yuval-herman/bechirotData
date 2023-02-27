@@ -1,15 +1,20 @@
-export interface Party {
-  votes: number;
-  mandates: number;
-  votesPercent: number;
-  name: string;
-  color: string;
-  error: string;
+interface CitedData {
+  source: string;
 }
 
-export interface Bechirot {
+export interface Party extends CitedData {
+  votes?: number;
+  mandates: number;
+  votesPercent?: number;
+  name: string;
+  color?: string;
+  letters?: string;
+  error?: string;
+}
+
+export interface Bechirot extends CitedData {
   parties: Party[];
-  thresholdPercent: string;
+  thresholdPercent?: string;
   oneMandate: number;
   eligibleVoters: number;
   legalVotes: number;
