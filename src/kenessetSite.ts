@@ -41,6 +41,9 @@ export default async function scrap(): Promise<Bechirot[]> {
     i > 1 && clearLastLine();
     console.log("done", i, "of", maxKnesset);
   } while (i < maxKnesset);
+  clearLastLine();
+  console.log("done kensset website");
+
   return elections;
 }
 
