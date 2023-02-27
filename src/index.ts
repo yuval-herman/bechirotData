@@ -6,20 +6,18 @@ import _ from "lodash";
 async function main() {
   const data = await (
     await Promise.all([scrapKnessetSite(), scrapNationalLibrary()])
-  ).map((res) => _.sortBy(res, "bechirotNum")); // since we fetch stuff asynchronously, order is not guaranteed
+  ).map((res) => _.sortBy(res, "date")); // since we fetch stuff asynchronously, order is not guaranteed
   writeFileSync(
     "results.json",
     JSON.stringify(
       _.zip(...data).map(([first, ...p]) =>
         _.mergeWith(first, ...p, (objValue: any, srcValue: any) => {
           if (
-            _.isString(objValue) &&
-            _.isString(srcValue) &&
-            objValue !== srcValue
-          ) {
-            return [objValue, srcValue];
-          }
-          if (!_.isObject(objValue) && objValue !== srcValue)
+            ((_.isString(objValue) && _.isString(srcValue)) ||
+              (_.isDate(objValue) && _.isDate(srcValue)) ||
+              !_.isObject(objValue)) &&
+            !_.isEqual(objValue, srcValue)
+          )
             return [objValue, srcValue];
         })
       ),

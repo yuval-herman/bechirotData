@@ -6,22 +6,30 @@ import { clearLastLine } from "./utils.js";
 export default async function scrap(): Promise<Bechirot[]> {
   console.log("scraping knesset website...");
 
-  const res = await fetchKnessetInfo(1);
-  const maxKnesset = Math.max(...res.KnessetsBullets.map((v) => v.ID));
-  const results = _.range(0, maxKnesset).map(async (i: number) => {
+  const first = await fetchKnessetInfo(0);
+  // Remove the 0 item as it is before the knesset
+  const results = _.pull(
+    first.KnessetsBullets.map((v) => v.ID),
+    0
+  ).map(async (i: number) => {
+    const res = await fetchKnessetInfo(i);
     const { ElectionDate, Threshold, MandateVotes, EligibleCount, CleanVotes } =
       res.ElectionsKnessetDetails[0];
-    const asParties: Party[] = res.ElectionsLists.map((p) => ({
-      votes: p.CleanVotesNum,
-      mandates: p.MandateNum,
-      votesPercent: p.VotesPrecent,
-      name: p.ListName,
-      source: "knessetSite",
-      color: p.ColorName,
-      error: Math.abs(
-        p.CleanVotesNum - CleanVotes * (p.VotesPrecent / 100)
-      ).toFixed(3),
-    }));
+    const asParties: Party[] = _.orderBy(
+      res.ElectionsLists.map((p) => ({
+        votes: p.CleanVotesNum,
+        mandates: p.MandateNum,
+        votesPercent: p.VotesPrecent,
+        name: p.ListName,
+        source: "knessetSite",
+        color: p.ColorName,
+        error: Math.abs(
+          p.CleanVotesNum - CleanVotes * (p.VotesPrecent / 100)
+        ).toFixed(3),
+      })),
+      "mandates",
+      "desc"
+    );
     const election: Bechirot = {
       parties: asParties,
       thresholdPercent: Threshold,

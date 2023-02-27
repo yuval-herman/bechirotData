@@ -58,8 +58,8 @@ async function scrapParties(
     .text()
     .match(/[\d\.]+%/)?.[0];
   return {
-    date: new Date(year, month, day),
-    bechirotNum: i,
+    date: new Date(year, month - 1, day),
+    bechirotNum: NaN,
     eligibleVoters: parseFloat(
       cleanText(
         tbody.find('td:contains("מספר בעלי זכות הבחירה")').next().text()
@@ -71,12 +71,16 @@ async function scrapParties(
     oneMandate: NaN,
     thresholdPercent: thresholdPercent ? cleanText(thresholdPercent) : null,
     source: "nationalLibrary",
-    parties: parties.map(([name, letters, mandates]) => ({
-      mandates: parseFloat(cleanText(mandates)),
-      name: cleanText(name),
-      letters: cleanText(letters),
-      source: "nationalLibrary",
-    })),
+    parties: _.orderBy(
+      parties.map(([name, letters, mandates]) => ({
+        mandates: parseFloat(cleanText(mandates)) || 0,
+        name: cleanText(name),
+        letters: cleanText(letters),
+        source: "nationalLibrary",
+      })),
+      "mandates",
+      "desc"
+    ),
   };
 }
 
