@@ -4,12 +4,14 @@ import scrapNationalLibrary from "./nationalLibrary.js";
 import _ from "lodash";
 
 async function main() {
-  const data = await Promise.all([scrapKnessetSite(), scrapNationalLibrary()]);
+  const data = await (
+    await Promise.all([scrapKnessetSite(), scrapNationalLibrary()])
+  ).map((res) => _.sortBy(res, "bechirotNum")); // since we fetch stuff asynchronously, order is not guaranteed
   writeFileSync(
     "results.json",
     JSON.stringify(
-      _.zip(...data).map((p) =>
-        _.mergeWith(...p, (objValue, srcValue) => {
+      _.zip(...data).map(([first, ...p]) =>
+        _.mergeWith(first, ...p, (objValue: any, srcValue: any) => {
           if (
             _.isString(objValue) &&
             _.isString(srcValue) &&
