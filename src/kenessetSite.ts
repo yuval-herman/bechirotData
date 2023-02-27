@@ -1,34 +1,28 @@
+import _ from "lodash";
 import fetch from "node-fetch";
-import { Bechirot } from "./types";
+import { Bechirot, Party } from "./types";
 import { clearLastLine } from "./utils.js";
 
 export default async function scrap(): Promise<Bechirot[]> {
-  const elections = [];
-  let i = 0;
-  let maxKnesset = 0;
   console.log("scraping knesset website...");
 
-  do {
-    i++;
-    const res = (await (
-      await fetch(
-        `https://knesset.gov.il/WebSiteApi/knessetapi/Knesset/GetKnessetDetails?knessetId=${i}&lang=HE`
-      )
-    ).json()) as KnessetSiteApiResult;
-    maxKnesset = Math.max(...res.KnessetsBullets.map((v) => v.ID));
+  const res = await fetchKnessetInfo(1);
+  const maxKnesset = Math.max(...res.KnessetsBullets.map((v) => v.ID));
+  const results = _.range(1, maxKnesset).map(async (i: number) => {
     const { ElectionDate, Threshold, MandateVotes, EligibleCount, CleanVotes } =
       res.ElectionsKnessetDetails[0];
-    const asParties = res.ElectionsLists.map((p) => ({
+    const asParties: Party[] = res.ElectionsLists.map((p) => ({
       votes: p.CleanVotesNum,
       mandates: p.MandateNum,
       votesPercent: p.VotesPrecent,
       name: p.ListName,
+      source: "knessetSite",
       color: p.ColorName,
       error: Math.abs(
         p.CleanVotesNum - CleanVotes * (p.VotesPrecent / 100)
       ).toFixed(3),
     }));
-    const election = {
+    const election: Bechirot = {
       parties: asParties,
       thresholdPercent: Threshold,
       oneMandate: MandateVotes,
@@ -36,15 +30,12 @@ export default async function scrap(): Promise<Bechirot[]> {
       legalVotes: CleanVotes,
       date: new Date(ElectionDate),
       bechirotNum: i,
+      source: "knessetSite",
     };
-    elections.push(election);
-    i > 1 && clearLastLine();
-    console.log("done", i, "of", maxKnesset);
-  } while (i < maxKnesset);
-  clearLastLine();
+    return election;
+  });
   console.log("done kensset website");
-
-  return elections;
+  return Promise.all(results);
 }
 
 interface KnessetHeader {
@@ -175,4 +166,11 @@ export interface KnessetSiteApiResult {
   KnessetMenuItems: KnessetMenuItem[];
   KnessetVideos: KnessetVideo[];
   KnessetsBullets: KnessetsBullet[];
+}
+async function fetchKnessetInfo(index: number) {
+  return (await (
+    await fetch(
+      `https://knesset.gov.il/WebSiteApi/knessetapi/Knesset/GetKnessetDetails?knessetId=${index}&lang=HE`
+    )
+  ).json()) as KnessetSiteApiResult;
 }
