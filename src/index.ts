@@ -1,12 +1,13 @@
-import { writeFileSync } from "fs";
-import scrapKnessetSite from "./kenessetSite.js";
-import scrapNationalLibrary from "./nationalLibrary.js";
-import _ from "lodash";
+import { writeFileSync } from "fs"
+import scrapKnessetSite from "./kenessetSite.js"
+import scrapNationalLibrary from "./nationalLibrary.js"
+import _ from "lodash"
+import electionCommittee from "./electionCommittee.js"
 
 async function main() {
   const data = await (
     await Promise.all([scrapKnessetSite(), scrapNationalLibrary()])
-  ).map((res) => _.sortBy(res, "date")); // since we fetch stuff asynchronously, order is not guaranteed
+  ).map((res) => _.sortBy(res, "date")) // since we fetch stuff asynchronously, order is not guaranteed
   writeFileSync(
     "results.json",
     JSON.stringify(
@@ -18,13 +19,14 @@ async function main() {
               !_.isObject(objValue)) &&
             !_.isEqual(objValue, srcValue)
           )
-            return [objValue, srcValue];
+            return [objValue, srcValue]
         })
       ),
       null,
       2
     )
-  );
+  )
 }
 
-main();
+// main();
+electionCommittee()

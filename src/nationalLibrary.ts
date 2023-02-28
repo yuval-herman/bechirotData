@@ -1,26 +1,26 @@
-import { cleanText, clearLastLine } from "./utils.js";
-import * as cheerio from "cheerio";
-import fetch, { RequestInfo } from "node-fetch";
-import { Bechirot } from "./types.js";
-import _ from "lodash";
+import { cleanText, clearLastLine } from "./utils.js"
+import * as cheerio from "cheerio"
+import fetch, { RequestInfo } from "node-fetch"
+import { Bechirot } from "./types.js"
+import _ from "lodash"
 
-const BASE_URL = "https://web.nli.org.il";
+const BASE_URL = "https://web.nli.org.il"
 
 export default async function scrap(): Promise<Bechirot[]> {
   /**
    * The national library site elections section is composed like so:
    * list of all elections > election info > election parties votes
    */
-  console.log("scraping national library website...");
-  const linksToElectionSites = await getLinksToElectionSites();
+  console.log("scraping national library website...")
+  const linksToElectionSites = await getLinksToElectionSites()
   const linksToElectionsResults = _.compact(
     await getLinksToElectionResults(linksToElectionSites)
-  );
+  )
   const results = (
     await Promise.all(linksToElectionsResults.map(scrapParties))
-  ).filter(Boolean);
-  console.log("done scraping national library");
-  return results;
+  ).filter(Boolean)
+  console.log("done scraping national library")
+  return results
 }
 
 async function scrapParties(
@@ -28,22 +28,22 @@ async function scrapParties(
   i: number,
   { length }: string[]
 ): Promise<Bechirot> {
-  const $ = cheerio.load(await (await fetch(link)).text());
-  const tbody = $('td:contains("מועד הבחירות")').parent().parent();
-  const parties: string[][] = [];
+  const $ = cheerio.load(await (await fetch(link)).text())
+  const tbody = $('td:contains("מועד הבחירות")').parent().parent()
+  const parties: string[][] = []
   $('td:contains("​מפלגה / רשימה")')
     .parent()
     .nextAll("tr")
     .each((_, e) => {
-      let party: string[] = [];
-      parties.push(party);
+      let party: string[] = []
+      parties.push(party)
       $(e)
         .children()
         .each((_, t) => {
-          const value = cleanText($(t).text());
-          if (value.length) party.push(value);
-        });
-    });
+          const value = cleanText($(t).text())
+          if (value.length) party.push(value)
+        })
+    })
 
   const [year, month, day] = tbody
     .find('td:contains("מועד הבחירות")')
@@ -51,12 +51,12 @@ async function scrapParties(
     .text()
     .split(".")
     .reverse()
-    .map((text) => Number(cleanText(text)));
+    .map((text) => Number(cleanText(text)))
   const thresholdPercent = tbody
     .find('td:contains("אחוז החסימה")')
     .next()
     .text()
-    .match(/[\d\.]+%/)?.[0];
+    .match(/[\d\.]+%/)?.[0]
   return {
     date: new Date(year, month - 1, day),
     bechirotNum: NaN,
@@ -81,22 +81,22 @@ async function scrapParties(
       "mandates",
       "desc"
     ),
-  };
+  }
 }
 
 async function getLinksToElectionResults(links: string[]) {
   return await Promise.all(
     links.map(async (link, i) => {
-      console.log("fetching election cycle page", i, "of", links.length);
-      clearLastLine();
-      const $ = cheerio.load(await (await fetch(link)).text());
+      console.log("fetching election cycle page", i, "of", links.length)
+      clearLastLine()
+      const $ = cheerio.load(await (await fetch(link)).text())
       const dLink = $("a:contains('מועמדים ותוצאות')")
         .map((_, aTag) => aTag.attribs.href)
-        .toArray()[0];
-      if (!dLink) return;
-      return dLink.startsWith("http://") ? dLink : BASE_URL + dLink;
+        .toArray()[0]
+      if (!dLink) return
+      return dLink.startsWith("http://") ? dLink : BASE_URL + dLink
     })
-  );
+  )
 }
 
 /** Retrieve links to all individual election sites */
@@ -108,12 +108,12 @@ async function getLinksToElectionSites() {
           "/sites/NLI/Hebrew/collections/treasures/elections/all_elections/Pages/default.aspx"
       )
     ).text()
-  );
+  )
   return [
     ...new Set(
       $(".ms-rteTable-0 tr a")
         .map((_, aTag) => BASE_URL + aTag.attribs.href)
         .toArray()
     ),
-  ];
+  ]
 }
