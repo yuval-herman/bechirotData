@@ -1,8 +1,8 @@
-import { cleanText, clearLastLine } from "./utils.js"
 import * as cheerio from "cheerio"
-import fetch, { RequestInfo } from "node-fetch"
-import { Bechirot } from "./types.js"
 import _ from "lodash"
+import fetch from "node-fetch"
+import { Bechirot } from "./types.js"
+import { basePrefix, cleanText, clearLastLine } from "./utils.js"
 
 const BASE_URL = "https://web.nli.org.il"
 
@@ -94,7 +94,7 @@ async function getLinksToElectionResults(links: string[]) {
         .map((_, aTag) => aTag.attribs.href)
         .toArray()[0]
       if (!dLink) return
-      return dLink.startsWith("http://") ? dLink : BASE_URL + dLink
+      return basePrefix(dLink, BASE_URL)
     })
   )
 }

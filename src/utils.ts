@@ -8,3 +8,7 @@ export function clearLastLine() {
 export function cleanText(text: string): any {
   return text.replace(/[\u200B-\u200D\uFEFF]/g, "").trim()
 }
+
+export function basePrefix(base: string, link: string): string {
+  return link.startsWith("http://") ? link : new URL(link, base).href
+}
