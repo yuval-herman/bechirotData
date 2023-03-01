@@ -1,8 +1,8 @@
 import * as cheerio from "cheerio"
 import _ from "lodash"
-import fetch from "node-fetch"
+import { fetchText } from "./fetchLink.js"
 import { Bechirot, Party } from "./types.js"
-import { basePrefix, cleanText, fetchDecode } from "./utils.js"
+import { basePrefix, cleanText } from "./utils.js"
 
 // The site is written in angular
 const electionCommitteeLinks: [number, string][] = [
@@ -46,89 +46,131 @@ const baseFieldNames = {
 	mandates: "מנדטים",
 } satisfies Record<string, string>
 
+const detectDetailsQuery = _.unzip(
+	["מצביעים", "כשרים", "פסולים"].map((v) =>
+		[v, [...v].reverse().join("")].map((s) => `:contains(${s})`)
+	)
+)
+	.map((v) => v.join(" ~ "))
+	.join(",")
+
 /**
  * Scraping the old committee site is a real challenge.
  * Some site use frames to show data, some use iframes, some tables, some don't.
  */
-export default async function scrap() {
-	electionCommitteeLinks.slice(-1).map(async ([num, link]) => {
-		let html = [await (await fetch(link)).text()],
-			nameTd,
-			$: cheerio.CheerioAPI
-		do {
-			if (!html.length) break
-			;({ nameTd, $ } = findResultsTable(html.pop()!))
-			if (!nameTd.length) {
-				html.push(
-					...(await Promise.all(
-						digFrames($, link).concat(digLinks($, link))
-					))
+export default async function scrap(): Promise<(Bechirot | undefined)[]> {
+	const bechirot: Bechirot[] = []
+	const promises = electionCommitteeLinks
+		.slice(-1)
+		.map(async ([num, link]) => {
+			let html: string[] = [await fetchText(link)],
+				nameTd: cheerio.Cheerio<cheerio.AnyNode> | undefined = undefined,
+				$: cheerio.CheerioAPI | undefined = undefined,
+				bechirotInfo: cheerio.Cheerio<cheerio.AnyNode> | undefined =
+					undefined
+			elementSearchLoop: do {
+				if (!html.length) break
+				for (const htmlToProcess of html) {
+					$ = cheerio.load(htmlToProcess)
+					if (!bechirotInfo?.length) {
+						bechirotInfo = $(detectDetailsQuery)
+					}
+					if (!nameTd?.length) {
+						;({ nameTd, $ } = findResultsTable(htmlToProcess))
+					}
+					if (nameTd.length && bechirotInfo.length) break elementSearchLoop
+				}
+				if (!$) break
+
+				const requests = _.chunk(
+					_.compact(
+						html
+							.map((page) =>
+								digFrames(page, link).concat(digLinks(page, link))
+							)
+							.flat()
+					),
+					5
 				)
-			} else break
-		} while (true)
-		if (!nameTd || !nameTd.length) return
+				html.length = 0
+				for (const request of requests) {
+					html.push(...(await Promise.all(request.map(fetchText))))
+				}
+			} while (true)
+			if (!nameTd?.length || !$ || !bechirotInfo?.length) {
+				console.error("found nothing...")
+				return
+			}
 
-		const rows: string[][] = []
-		nameTd
-			.parent()
-			.parent()
-			.children()
-			.each((_i, tr) => {
-				const row: string[] = []
-				rows.push(row)
-				$(tr)
-					.children()
-					.each((_i, cell) => {
-						row.push(cleanText($(cell).text()))
-					})
-			})
-		const [header, ...data] = rows
-		const mapping = _.fromPairs(
-			Object.entries(baseFieldNames).map(([field, value]) => [
-				field,
-				header.findIndex((str) => str.includes(value)),
-			])
-		) as Record<keyof typeof baseFieldNames, number>
-		const parties: Party[] = data.map((row) =>
-			_.fromPairs(
-				Object.entries(mapping)
-					.map(([field, value]) => {
-						let rowValue: string | number | undefined = row[value] as
-							| string
-							| undefined
-						if (
-							rowValue &&
-							["votes", "mandates", "votesPercent"].includes(field)
-						) {
-							rowValue = parseFloat(rowValue)
-						}
-						return [field, rowValue]
-					})
-					.concat([["source", "oldElectionsSites"]])
+			const rows: string[][] = []
+			nameTd
+				.parent()
+				.parent()
+				.children()
+				.each((_i, tr) => {
+					const row: string[] = []
+					rows.push(row)
+					$!(tr)
+						.children()
+						.each((_i, cell) => {
+							row.push(cleanText($!(cell).text()))
+						})
+				})
+			const [header, ...data] = rows
+			const mapping = _.fromPairs(
+				Object.entries(baseFieldNames).map(([field, value]) => [
+					field,
+					header.findIndex((str) => str.includes(value)),
+				])
+			) as Record<keyof typeof baseFieldNames, number>
+			const parties: Party[] = _.orderBy(
+				data.map((row) =>
+					_.fromPairs(
+						Object.entries(mapping)
+							.map(([field, value]) => {
+								let rowValue: string | number | undefined = row[
+									value
+								] as string | undefined
+								if (
+									rowValue &&
+									["votes", "mandates", "votesPercent"].includes(field)
+								) {
+									rowValue = parseFloat(rowValue)
+								}
+								return [field, rowValue]
+							})
+							.concat([["source", "oldElectionsSites"]])
+					)
+				) as (typeof baseFieldNames & {
+					source: string
+					votes: number
+					mandates: number
+					votesPercent: number
+				})[],
+				"mandates",
+				"desc"
 			)
-		) as (typeof baseFieldNames & {
-			source: string
-			votes: number
-			mandates: number
-			votesPercent: number
-		})[]
-		console.log(parties)
 
-		// [ 'שם הרשימה', 'סימן', 'מספר קולות', 'אחוזים', 'מנדטים' ]
-	})
-}
-function digLinks($: cheerio.CheerioAPI, link: string) {
-	return $("a")
-		.filter((_i, a) => {
-			const text = $(a).text()
-			return (
-				text.includes("תוצאות") ||
-				text.includes([..."תוצאות"].reverse().join(""))
-			)
+			bechirot[num - 1] = {
+				parties,
+				bechirotNum: num,
+				source: "election committee",
+			}
 		})
-		.map((_i, a) => basePrefix(link, a.attribs.href))
+	await Promise.all(promises)
+	return bechirot
+}
+
+function digLinks(html: string, baseLink: string): string[] {
+	const origin = new URL(baseLink).origin
+	return cheerio
+		.load(html)("a[href]")
+		.map((_i, a) => basePrefix(baseLink, a.attribs.href))
+		.filter((_i, link) => {
+			const url = new URL(link)
+			return url.origin === origin && !url.hash && !url.search
+		})
 		.toArray()
-		.map(fetchDecode)
 }
 
 function findResultsTable(html: string) {
@@ -140,9 +182,9 @@ function findResultsTable(html: string) {
 	return { nameTd, $ }
 }
 
-function digFrames($: cheerio.CheerioAPI, link: string): Promise<string>[] {
-	const framesLinks = $("frame")
+function digFrames(html: string, link: string): string[] {
+	return cheerio
+		.load(html)("frame")
 		.map((_, frame) => basePrefix(link, frame.attribs["src"]))
 		.toArray()
-	return framesLinks.map(async (frameLink) => fetchDecode(frameLink))
 }
