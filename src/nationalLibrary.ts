@@ -85,18 +85,7 @@ async function scrapParties(
 }
 
 async function getLinksToElectionResults(links: string[]) {
-  return await Promise.all(
-    links.map(async (link, i) => {
-      console.log("fetching election cycle page", i, "of", links.length)
-      clearLastLine()
-      const $ = cheerio.load(await (await fetch(link)).text())
-      const dLink = $("a:contains('מועמדים ותוצאות')")
-        .map((_, aTag) => aTag.attribs.href)
-        .toArray()[0]
-      if (!dLink) return
-      return basePrefix(dLink, BASE_URL)
-    })
-  )
+			return basePrefix(BASE_URL, dLink)
 }
 
 /** Retrieve links to all individual election sites */
