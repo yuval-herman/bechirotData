@@ -59,6 +59,7 @@ const detectDetailsQuery = _.unzip(
  * Some site use frames to show data, some use iframes, some tables, some don't.
  */
 export default async function scrap(): Promise<(Bechirot | undefined)[]> {
+	console.log("scraping election committee")
 	const bechirot: Bechirot[] = []
 	const promises = electionCommitteeLinks
 		.slice(-1)
@@ -139,7 +140,7 @@ export default async function scrap(): Promise<(Bechirot | undefined)[]> {
 								}
 								return [field, rowValue]
 							})
-							.concat([["source", "oldElectionsSites"]])
+							.concat([["source", "electionCommittee"]])
 					)
 				) as (typeof baseFieldNames & {
 					source: string
@@ -154,10 +155,11 @@ export default async function scrap(): Promise<(Bechirot | undefined)[]> {
 			bechirot[num - 1] = {
 				parties,
 				bechirotNum: num,
-				source: "election committee",
+				source: "electionCommittee",
 			}
 		})
 	await Promise.all(promises)
+	console.log("done election committee")
 	return bechirot
 }
 

@@ -19,7 +19,7 @@ export default async function scrap(): Promise<Bechirot[]> {
 	const results = (
 		await Promise.all(linksToElectionsResults.map(scrapParties))
 	).filter(Boolean)
-	console.log("done scraping national library")
+	console.log("done national library")
 	return results
 }
 

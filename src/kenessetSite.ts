@@ -21,17 +21,19 @@ export default async function scrap(): Promise<Bechirot[]> {
 			CleanVotes,
 		} = res.ElectionsKnessetDetails[0]
 		const asParties: Party[] = _.orderBy(
-			res.ElectionsLists.map((p) => ({
-				votes: p.CleanVotesNum,
-				mandates: p.MandateNum,
-				votesPercent: p.VotesPrecent,
-				name: p.ListName,
-				source: "knessetSite",
-				color: p.ColorName,
-				error: Math.abs(
-					p.CleanVotesNum - CleanVotes * (p.VotesPrecent / 100)
-				).toFixed(3),
-			})),
+			res.ElectionsLists.map(
+				(p): Party => ({
+					votes: p.CleanVotesNum,
+					mandates: p.MandateNum,
+					votesPercent: p.VotesPrecent,
+					name: p.ListName,
+					source: "knessetSite",
+					color: p.ColorName,
+					error: Math.abs(
+						p.CleanVotesNum - CleanVotes * (p.VotesPrecent / 100)
+					).toFixed(3),
+				})
+			),
 			"mandates",
 			"desc"
 		)
