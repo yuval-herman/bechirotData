@@ -21,8 +21,16 @@ function retrieveFromCache(link: string): string | undefined {
 	)[link] as string | undefined
 	if (!nameInCache) return undefined
 
-	const filePath = path.join(cacheDir, nameInCache)
-	return (JSON.parse(readFileSync(filePath, "utf-8")) as CachedLink).data
+	try {
+		return (
+			JSON.parse(
+				readFileSync(path.join(cacheDir, nameInCache), "utf-8")
+			) as CachedLink
+		).data
+	} catch (error) {
+		console.error(error)
+		return
+	}
 }
 
 function cacheResponse(link: string, data: string): void {
