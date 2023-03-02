@@ -19,12 +19,6 @@ async function main() {
 		JSON.stringify(
 			_.zip(...data).map(([first, ...p]) =>
 				_.mergeWith(first, ...p, (objValue: unknown, srcValue: unknown) => {
-					if (
-						objValue === "electionCommittee" ||
-						srcValue === "electionCommittee"
-					) {
-						console.log(objValue, srcValue, _.isArrayLike(objValue))
-					}
 					if (_.isNil(objValue)) return srcValue
 					if (_.isNil(srcValue)) return objValue
 					if (_.isPlainObject(objValue)) return
