@@ -1,8 +1,9 @@
 import { randomUUID } from "crypto"
 import convertBody from "fetch-charset-detection"
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs"
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "fs"
 import { writeFile } from "fs/promises"
-import fetchBase, { RequestInfo, RequestInit } from "node-fetch"
+import _ from "lodash"
+import fetchBase, { RequestInfo, RequestInit, Response } from "node-fetch"
 import path from "path"
 
 const visitedLinks = new Set<string>()
@@ -51,14 +52,76 @@ function cacheResponse(link: string, data: string): void {
 	writeFileSync(infoFilePath, JSON.stringify(cacheInfo))
 }
 
-function fetch(url: RequestInfo, init?: RequestInit) {
-	return fetchBase(url, {
-		headers: {
-			"User-Agent":
-				"Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/110.0",
-		},
-		...init,
+const MAX_PARALLEL_FETCHES = 5
+const inProgressFetches: Promise<Response>[] = []
+type QueuedFetch = {
+	url: RequestInfo
+	init: RequestInit
+	resolveFunction: (value: Response | PromiseLike<Response>) => void
+	rejectFunction: (reason?: any) => void
+}
+const fetchesQueue: QueuedFetch[] = []
+const BASE_FETCH_INIT: RequestInit = {
+	headers: {
+		"User-Agent":
+			"Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/110.0",
+	},
+}
+function fetch(url: RequestInfo, init?: RequestInit): Promise<Response> {
+	let { resolveFunction, rejectFunction, promise } =
+		getPromiseFunctions<Response>()
+	fetchesQueue.push({
+		url,
+		init: { ...BASE_FETCH_INIT, ...init },
+		resolveFunction,
+		rejectFunction,
 	})
+	refreshFetchesQueues()
+	return promise
+}
+
+function refreshFetchesQueues() {
+	const availableSlots = MAX_PARALLEL_FETCHES - inProgressFetches.length
+	for (let i = 0; i < availableSlots; i++) {
+		const fetchRequest = fetchesQueue.pop()
+		if (fetchRequest) sendFetch(fetchRequest)
+		else break
+	}
+}
+
+function getPromiseFunctions<T>(): {
+	resolveFunction: (value: T | PromiseLike<T>) => void
+	rejectFunction: (reason?: any) => void
+	promise: Promise<T>
+} {
+	let resolveFunction: (value: T | PromiseLike<T>) => void = _.noop,
+		rejectFunction: (reason?: any) => void = _.noop
+	const promise = new Promise<T>((resolve, reject) => {
+		resolveFunction = resolve
+		rejectFunction = reject
+	})
+	return { resolveFunction, rejectFunction, promise }
+}
+
+function sendFetch(fetchDetails: QueuedFetch) {
+	console.log(fetchDetails.url)
+	const fetchPromise = fetchBase(fetchDetails.url, fetchDetails.init)
+	inProgressFetches.push(fetchPromise)
+	const removeFetch = () => {
+		_.pull(inProgressFetches, fetchPromise)
+		refreshFetchesQueues()
+	}
+	const thenHandler = (value: Response): void => {
+		removeFetch()
+		console.log(inProgressFetches.length, fetchesQueue.length)
+		fetchDetails.resolveFunction(value)
+	}
+	const rejectHandler = (reason: any) => {
+		removeFetch()
+		console.error(reason)
+		fetchDetails.rejectFunction(reason)
+	}
+	fetchPromise.then(thenHandler).catch(rejectHandler)
 }
 
 export async function fetchDecode(url: string) {
