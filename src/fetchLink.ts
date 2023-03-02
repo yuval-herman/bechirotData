@@ -1,9 +1,9 @@
 import { randomUUID } from "crypto"
+import convertBody from "fetch-charset-detection"
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs"
 import { writeFile } from "fs/promises"
-import fetch from "node-fetch"
+import fetchBase, { RequestInfo, RequestInit } from "node-fetch"
 import path from "path"
-import { fetchDecode } from "./utils.js"
 
 const visitedLinks = new Set<string>()
 const cacheDir = "./cachedSites"
@@ -46,6 +46,20 @@ function cacheResponse(link: string, data: string): void {
 	)
 	cacheInfo[link] = linkId
 	writeFileSync(infoFilePath, JSON.stringify(cacheInfo))
+}
+
+function fetch(url: RequestInfo, init?: RequestInit) {
+	return fetchBase(url, {
+		headers: {
+			"User-Agent":
+				"Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/110.0",
+		},
+		...init,
+	})
+}
+
+export async function fetchDecode(url: string) {
+	return convertBody(await (await fetch(url)).arrayBuffer())
 }
 
 export async function fetchText(link: string): Promise<string> {
