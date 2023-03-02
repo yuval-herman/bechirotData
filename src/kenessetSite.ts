@@ -1,6 +1,5 @@
 import _ from "lodash"
 import { fetchJson } from "./fetchLink.js"
-// import fetch from "node-fetch"
 import { Bechirot, Party } from "./types"
 
 export default async function scrap(): Promise<Bechirot[]> {
