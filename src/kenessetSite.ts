@@ -48,8 +48,9 @@ export default async function scrap(): Promise<Bechirot[]> {
 		}
 		return election
 	})
+	const awaitedResults = await Promise.all(results)
 	console.log("done kenesset website")
-	return Promise.all(results)
+	return awaitedResults
 }
 
 interface KnessetHeader {
