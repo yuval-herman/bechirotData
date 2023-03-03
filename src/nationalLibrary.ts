@@ -2,33 +2,39 @@ import * as cheerio from "cheerio"
 import _ from "lodash"
 import { fetchText } from "./fetchLink.js"
 import { Bechirot } from "./types.js"
-import { basePrefix, cleanText, clearLastLine } from "./utils.js"
+import { basePrefix, cleanText, errorLog } from "./utils.js"
 
 const BASE_URL = "https://web.nli.org.il"
+const SOURCE = "national library"
 
-export default async function scrap(): Promise<Bechirot[]> {
+export default async function scrap(): Promise<Bechirot[] | undefined> {
 	/**
 	 * The national library site elections section is composed like so:
 	 * list of all elections > election info > election parties votes
 	 */
-	console.log("scraping national library website...")
+	console.log("scraping", SOURCE)
 	const linksToElectionSites = await getLinksToElectionSites()
+	if (!linksToElectionSites) {
+		errorLog(SOURCE, "couldn't fetch link to election sites, aborting")
+		return
+	}
 	const linksToElectionsResults = _.compact(
 		await getLinksToElectionResults(linksToElectionSites)
 	)
 	const results = (
 		await Promise.all(linksToElectionsResults.map(scrapParties))
 	).filter(Boolean)
-	console.log("done national library")
-	return results
+	console.log("done", SOURCE)
+	return _.compact(results)
 }
 
-async function scrapParties(
-	link: string,
-	i: number,
-	{ length }: string[]
-): Promise<Bechirot> {
-	const $ = cheerio.load(await fetchText(link))
+async function scrapParties(link: string): Promise<Bechirot | undefined> {
+	const html = await fetchText(link)
+	if (!html) {
+		errorLog(SOURCE, `couldn't fetch ${link}`)
+		return
+	}
+	const $ = cheerio.load(html)
 	const tbody = $('td:contains("מועד הבחירות")').parent().parent()
 	const parties: string[][] = []
 	$('td:contains("​מפלגה / רשימה")')
@@ -72,13 +78,13 @@ async function scrapParties(
 		),
 		oneMandate: NaN,
 		thresholdPercent: thresholdPercent ? cleanText(thresholdPercent) : null,
-		source: "nationalLibrary",
+		source: SOURCE,
 		parties: _.orderBy(
 			parties.map(([name, letters, mandates]) => ({
 				mandates: parseFloat(cleanText(mandates)) || 0,
 				name: cleanText(name),
 				letters: cleanText(letters),
-				source: "nationalLibrary",
+				source: SOURCE,
 			})),
 			"mandates",
 			"desc"
@@ -86,10 +92,17 @@ async function scrapParties(
 	}
 }
 
-async function getLinksToElectionResults(links: string[]) {
+async function getLinksToElectionResults(
+	links: string[]
+): Promise<(string | undefined)[]> {
 	return await Promise.all(
-		links.map(async (link, i) => {
-			const $ = cheerio.load(await fetchText(link))
+		links.map(async (link) => {
+			const html = await fetchText(link)
+			if (!html) {
+				errorLog(SOURCE, `couldn't fetch ${link}`)
+				return
+			}
+			const $ = cheerio.load(html)
 			const dLink = $("a:contains('מועמדים ותוצאות')")
 				.map((_, aTag) => aTag.attribs.href)
 				.toArray()[0]
@@ -102,12 +115,15 @@ async function getLinksToElectionResults(links: string[]) {
 
 /** Retrieve links to all individual election sites */
 async function getLinksToElectionSites() {
-	const $ = cheerio.load(
-		await fetchText(
-			BASE_URL +
-				"/sites/NLI/Hebrew/collections/treasures/elections/all_elections/Pages/default.aspx"
-		)
-	)
+	const link =
+		BASE_URL +
+		"/sites/NLI/Hebrew/collections/treasures/elections/all_elections/Pages/default.aspx"
+	const html = await fetchText(link)
+	if (!html) {
+		errorLog(SOURCE, `couldn't fetch ${link}`)
+		return
+	}
+	const $ = cheerio.load(html)
 	return [
 		...new Set(
 			$(".ms-rteTable-0 tr a")
