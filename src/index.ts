@@ -6,7 +6,7 @@ import electionCommittee from "./electionCommittee.js"
 import { Bechirot } from "./types.js"
 
 async function main() {
-	const data = await (
+	const data = (
 		await Promise.all([
 			scrapKnessetSite(),
 			scrapNationalLibrary(),
