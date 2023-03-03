@@ -2,9 +2,11 @@ import * as cheerio from "cheerio"
 import _ from "lodash"
 import { fetchText } from "./fetchLink.js"
 import { Bechirot, Party } from "./types.js"
-import { basePrefix, cleanText } from "./utils.js"
+import { basePrefix, cleanText, errorLog } from "./utils.js"
 
-// The site is written in angular
+const SOURCE = "elections committee"
+
+// since the election committee site is written in angular I copied the links manually
 const electionCommitteeLinks: [number, string][] = [
 	[25, "https://votes25.bechirot.gov.il/"],
 	[24, "https://votes24.bechirot.gov.il/"],
@@ -60,12 +62,12 @@ const detectDetailsQuery = _.unzip(
  */
 
 export default async function scrap(): Promise<(Bechirot | undefined)[]> {
-	console.log("scraping election committee")
+	console.log("scraping", SOURCE)
 	const bechirot: Bechirot[] = []
 	const scrapLink = async ([num, link]: [number, string]): Promise<void> => {
 		const firstPage = await fetchText(link)
 		if (!firstPage) {
-			console.error("found nothing...")
+			errorLog(SOURCE, `couldn't fetch ${link}`)
 			return
 		}
 		let html: string[] = [firstPage],
@@ -135,7 +137,7 @@ export default async function scrap(): Promise<(Bechirot | undefined)[]> {
 							}
 							return [field, rowValue]
 						})
-						.concat([["source", "electionCommittee"]])
+						.concat([["source", SOURCE]])
 				)
 			) as (typeof baseFieldNames & {
 				source: string
@@ -150,13 +152,13 @@ export default async function scrap(): Promise<(Bechirot | undefined)[]> {
 		bechirot[num - 1] = {
 			parties,
 			bechirotNum: num,
-			source: "electionCommittee",
+			source: SOURCE,
 		}
 	}
 
 	await Promise.all(electionCommitteeLinks.map(scrapLink))
 
-	console.log("done election committee")
+	console.log("done", SOURCE)
 	return bechirot
 }
 
