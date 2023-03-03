@@ -58,107 +58,104 @@ const detectDetailsQuery = _.unzip(
  * Scraping the old committee site is a real challenge.
  * Some site use frames to show data, some use iframes, some tables, some don't.
  */
+
 export default async function scrap(): Promise<(Bechirot | undefined)[]> {
 	console.log("scraping election committee")
 	const bechirot: Bechirot[] = []
-	const promises = electionCommitteeLinks
-		.slice(-1)
-		.map(async ([num, link]) => {
-			let html: string[] = [await fetchText(link)],
-				nameTd: cheerio.Cheerio<cheerio.AnyNode> | undefined = undefined,
-				$: cheerio.CheerioAPI | undefined = undefined,
-				bechirotInfo: cheerio.Cheerio<cheerio.AnyNode> | undefined =
-					undefined
-			elementSearchLoop: do {
-				if (!html.length) break
-				for (const htmlToProcess of html) {
-					$ = cheerio.load(htmlToProcess)
-					if (!bechirotInfo?.length) {
-						bechirotInfo = $(detectDetailsQuery)
-					}
-					if (!nameTd?.length) {
-						;({ nameTd, $ } = findResultsTable(htmlToProcess))
-					}
-					if (nameTd.length && bechirotInfo.length) break elementSearchLoop
-				}
-				if (!$) break
+	const scrapLink = async ([num, link]: [number, string]): Promise<void> => {
+		const firstPage = await fetchText(link)
+		if (!firstPage) {
+			console.error("found nothing...")
+			return
+		}
+		let html: string[] = [firstPage],
+			nameTd: cheerio.Cheerio<cheerio.AnyNode> | undefined = undefined,
+			$: cheerio.CheerioAPI | undefined = undefined
 
-				const requests = _.chunk(
-					_.compact(
-						html
-							.map((page) =>
-								digFrames(page, link).concat(digLinks(page, link))
-							)
-							.flat()
-					),
-					5
-				)
-				html.length = 0
-				for (const request of requests) {
-					html.push(...(await Promise.all(request.map(fetchText))))
+		elementSearchLoop: do {
+			if (!html.length) break
+			for (const htmlToProcess of html) {
+				$ = cheerio.load(htmlToProcess)
+
+				if (!nameTd?.length) {
+					;({ nameTd, $ } = findResultsTable(htmlToProcess))
 				}
-			} while (true)
-			if (!nameTd?.length || !$ || !bechirotInfo?.length) {
-				console.error("found nothing...")
-				return
+				if (nameTd.length) break elementSearchLoop
 			}
+			if (!$) break
 
-			const rows: string[][] = []
-			nameTd
-				.parent()
-				.parent()
-				.children()
-				.each((_i, tr) => {
-					const row: string[] = []
-					rows.push(row)
-					$!(tr)
-						.children()
-						.each((_i, cell) => {
-							row.push(cleanText($!(cell).text()))
-						})
-				})
-			const [header, ...data] = rows
-			const mapping = _.fromPairs(
-				Object.entries(baseFieldNames).map(([field, value]) => [
-					field,
-					header.findIndex((str) => str.includes(value)),
-				])
-			) as Record<keyof typeof baseFieldNames, number>
-			const parties: Party[] = _.orderBy(
-				data.map((row) =>
-					_.fromPairs(
-						Object.entries(mapping)
-							.map(([field, value]) => {
-								let rowValue: string | number | undefined = row[
-									value
-								] as string | undefined
-								if (
-									rowValue &&
-									["votes", "mandates", "votesPercent"].includes(field)
-								) {
-									rowValue = parseFloat(rowValue)
-								}
-								return [field, rowValue]
-							})
-							.concat([["source", "electionCommittee"]])
+			const requests = _.compact(
+				html
+					.map((page) =>
+						digFrames(page, link).concat(digLinks(page, link))
 					)
-				) as (typeof baseFieldNames & {
-					source: string
-					votes: number
-					mandates: number
-					votesPercent: number
-				})[],
-				"mandates",
-				"desc"
+					.flat()
 			)
+			html.length = 0
+			html.push(..._.compact(await Promise.all(requests.map(fetchText))))
+		} while (true)
+		if (!nameTd?.length || !$) {
+			return
+		}
 
-			bechirot[num - 1] = {
-				parties,
-				bechirotNum: num,
-				source: "electionCommittee",
-			}
-		})
-	await Promise.all(promises)
+		const rows: string[][] = []
+		nameTd
+			.parent()
+			.parent()
+			.children()
+			.each((_i, tr) => {
+				const row: string[] = []
+				rows.push(row)
+				$!(tr)
+					.children()
+					.each((_i, cell) => {
+						row.push(cleanText($!(cell).text()))
+					})
+			})
+		const [header, ...data] = rows
+		const mapping = _.fromPairs(
+			Object.entries(baseFieldNames).map(([field, value]) => [
+				field,
+				header.findIndex((str) => str.includes(value)),
+			])
+		) as Record<keyof typeof baseFieldNames, number>
+		const parties: Party[] = _.orderBy(
+			data.map((row) =>
+				_.fromPairs(
+					Object.entries(mapping)
+						.map(([field, value]) => {
+							let rowValue: string | number | undefined = row[value] as
+								| string
+								| undefined
+							if (
+								rowValue &&
+								["votes", "mandates", "votesPercent"].includes(field)
+							) {
+								rowValue = parseFloat(rowValue)
+							}
+							return [field, rowValue]
+						})
+						.concat([["source", "electionCommittee"]])
+				)
+			) as (typeof baseFieldNames & {
+				source: string
+				votes: number
+				mandates: number
+				votesPercent: number
+			})[],
+			["mandates", "votes"],
+			["desc", "desc"]
+		)
+
+		bechirot[num - 1] = {
+			parties,
+			bechirotNum: num,
+			source: "electionCommittee",
+		}
+	}
+
+	await Promise.all(electionCommitteeLinks.map(scrapLink))
+
 	console.log("done election committee")
 	return bechirot
 }
@@ -186,7 +183,7 @@ function findResultsTable(html: string) {
 
 function digFrames(html: string, link: string): string[] {
 	return cheerio
-		.load(html)("frame")
+		.load(html)("frame, iframe")
 		.map((_, frame) => basePrefix(link, frame.attribs["src"]))
 		.toArray()
 }
