@@ -1,17 +1,28 @@
 import _ from "lodash"
 import { fetchJson } from "./fetchLink.js"
 import { Bechirot, Party } from "./types"
+import { errorLog } from "./utils.js"
 
-export default async function scrap(): Promise<Bechirot[]> {
-	console.log("scraping knesset website...")
+const SOURCE = "knesset site"
+
+export default async function scrap(): Promise<Bechirot[] | undefined> {
+	console.log("scraping", SOURCE)
 
 	const first = await fetchKnessetInfo(0)
+	if (!first) {
+		errorLog(SOURCE, "couldn't fetch first page")
+		return
+	}
 	// Remove the 0 item as it is before the knesset
 	const results = _.pull(
 		first.KnessetsBullets.map((v) => v.ID),
 		0
 	).map(async (i: number) => {
 		const res = await fetchKnessetInfo(i)
+		if (!res) {
+			errorLog(SOURCE, `couldn't fetch ${i} elections`)
+			return
+		}
 		const {
 			ElectionDate,
 			Threshold,
@@ -26,7 +37,7 @@ export default async function scrap(): Promise<Bechirot[]> {
 					mandates: p.MandateNum,
 					votesPercent: p.VotesPrecent,
 					name: p.ListName,
-					source: "knessetSite",
+					source: SOURCE,
 					color: p.ColorName,
 					error: Math.abs(
 						p.CleanVotesNum - CleanVotes * (p.VotesPrecent / 100)
@@ -44,12 +55,12 @@ export default async function scrap(): Promise<Bechirot[]> {
 			legalVotes: CleanVotes,
 			date: new Date(ElectionDate),
 			bechirotNum: i,
-			source: "knessetSite",
+			source: SOURCE,
 		}
 		return election
 	})
-	const awaitedResults = await Promise.all(results)
-	console.log("done kenesset website")
+	const awaitedResults = _.compact(await Promise.all(results))
+	console.log("done", SOURCE)
 	return awaitedResults
 }
 
