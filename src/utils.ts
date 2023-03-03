@@ -12,3 +12,7 @@ export function cleanText(text: string): any {
 export function basePrefix(base: string, link: string): string {
 	return link.startsWith("http://") ? link : new URL(link, base).href
 }
+
+export function errorLog(source: string, errorMsg: string) {
+	console.error("ERROR:", source, "-", errorMsg)
+}
