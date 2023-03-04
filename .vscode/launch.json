@@ -7,6 +7,14 @@
 		{
 			"type": "node",
 			"request": "launch",
+			"name": "Launch current file",
+			"skipFiles": ["<node_internals>/**"],
+			"program": "${file}",
+			"outFiles": ["${workspaceFolder}/**/*.js"]
+		},
+		{
+			"type": "node",
+			"request": "launch",
 			"name": "Launch Program",
 			"skipFiles": ["<node_internals>/**"],
 			"program": "${workspaceFolder}/src/index.ts",
