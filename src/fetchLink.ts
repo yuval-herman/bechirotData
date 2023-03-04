@@ -1,8 +1,7 @@
+import axios, { AxiosRequestConfig, AxiosResponse } from "axios"
 import { randomUUID } from "crypto"
-import convertBody from "fetch-charset-detection"
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "fs"
 import _ from "lodash"
-import fetchBase, { RequestInfo, RequestInit, Response } from "node-fetch"
 import path from "path"
 
 const visitedLinks = new Set<string>()
@@ -53,27 +52,36 @@ function cacheResponse(link: string, data: string): void {
 }
 
 const MAX_PARALLEL_FETCHES = 5
-const inProgressFetches: Promise<Response>[] = []
+const inProgressFetches: Promise<AxiosResponse>[] = []
 type QueuedFetch = {
-	url: RequestInfo
-	init: RequestInit
-	resolveFunction: (value: Response | PromiseLike<Response>) => void
+	url: string
+	init: AxiosRequestConfig
+	resolveFunction: (value: AxiosResponse | PromiseLike<AxiosResponse>) => void
 	rejectFunction: (reason?: any) => void
 }
+
 const fetchesQueue: QueuedFetch[] = []
-const BASE_FETCH_INIT: RequestInit = {
+const BASE_FETCH_INIT: AxiosRequestConfig = {
 	headers: {
 		"User-Agent":
 			"Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/110.0",
+		// Accept:
+		// 	"text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+		// "Accept-Language": "en-US,en;q=0.5",
+		// "Upgrade-Insecure-Requests": "1",
+		// "Sec-Fetch-Dest": "document",
+		// "Sec-Fetch-Mode": "navigate",
+		// "Sec-Fetch-Site": "cross-site",
+		// "If-Modified-Since": "Fri, 03 Mar 2023 14:37:37 GMT",
 	},
-	redirect: "manual",
 }
-function fetch(url: RequestInfo, init?: RequestInit): Promise<Response> {
+
+function fetch(url: string, init?: AxiosRequestConfig): Promise<AxiosResponse> {
 	let { resolveFunction, rejectFunction, promise } =
-		getPromiseFunctions<Response>()
+		getPromiseFunctions<AxiosResponse>()
 	fetchesQueue.push({
 		url,
-		init: { ...BASE_FETCH_INIT, ...init },
+		init: _.merge(BASE_FETCH_INIT, init),
 		resolveFunction,
 		rejectFunction,
 	})
@@ -106,18 +114,23 @@ function getPromiseFunctions<T>(): {
 
 function sendFetch(fetchDetails: QueuedFetch) {
 	console.log(fetchDetails.url)
-	const fetchPromise = fetchBase(fetchDetails.url, fetchDetails.init)
+
+	const fetchPromise = axios.get(fetchDetails.url, fetchDetails.init)
 	inProgressFetches.push(fetchPromise)
 	const removeFetch = () => {
 		_.pull(inProgressFetches, fetchPromise)
 		refreshFetchesQueues()
 	}
-	const thenHandler = (value: Response): void => {
+	const thenHandler = (value: AxiosResponse): void => {
 		removeFetch()
 		console.log(
-			value.type,
+			"statusText: ",
+			value.statusText,
+			"inProgressFetches: ",
 			inProgressFetches.length,
+			"fetchesQueue: ",
 			fetchesQueue.length,
+			"url: ",
 			fetchDetails.url
 		)
 		fetchDetails.resolveFunction(value)
@@ -130,8 +143,10 @@ function sendFetch(fetchDetails: QueuedFetch) {
 	fetchPromise.then(thenHandler).catch(rejectHandler)
 }
 
-export async function fetchDecode(url: string) {
-	return convertBody(await (await fetch(url)).arrayBuffer())
+export async function fetchDecode(url: string): Promise<string> {
+	return await (
+		await fetch(url, { responseType: "text" })
+	).data
 }
 
 export async function fetchText(link: string): Promise<string | undefined> {
@@ -160,7 +175,7 @@ export async function fetchJson<T extends object>(
 	let obj: T = (jsonObj = retrieveFromCache(link)) && JSON.parse(jsonObj)
 	if (!obj) {
 		try {
-			obj = (await (await fetch(link)).json()) as T
+			obj = (await fetch(link, { responseType: "json" })).data as T
 		} catch (error) {
 			console.error(error)
 			return
