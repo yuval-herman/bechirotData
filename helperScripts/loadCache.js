@@ -11,9 +11,16 @@ try {
 		const targetUrl = process.argv[2]
 
 		// Look up the ID associated with the target URL
-		const targetId = cacheMap[targetUrl]
-		if (targetId) {
-			console.log(`ID for ${targetUrl}: ${targetId}`)
+		const keys = Object.keys(cacheMap).filter((url) =>
+			url.includes(targetUrl)
+		)
+		if (keys) {
+			for (const key of keys) {
+				const targetId = cacheMap[key]
+				console.log(
+					`ID for ${targetUrl}: ${targetId} cachedSites/${targetId}`
+				)
+			}
 		} else {
 			console.error(`No ID found for ${targetUrl}`)
 		}
