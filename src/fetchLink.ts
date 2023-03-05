@@ -18,7 +18,7 @@ if (!existsSync(infoFilePath)) {
 
 type CachedLink = { link: string; data: string }
 
-function retrieveFromCache(link: string): string | undefined {
+function retrieveFromCache(link: string): string | object | undefined {
 	const cacheInfo: Record<string, string> = JSON.parse(
 		readFileSync(infoFilePath, "utf-8")
 	)
@@ -40,7 +40,7 @@ function retrieveFromCache(link: string): string | undefined {
 	}
 }
 
-function cacheResponse(link: string, data: string): void {
+function cacheResponse(link: string, data: any): void {
 	// A map from links to file paths
 	const cacheInfo: Record<string, string> = JSON.parse(
 		readFileSync(infoFilePath, "utf-8")
@@ -169,11 +169,11 @@ export async function fetchText(
 	if (!visitedLinks.has(link)) {
 		visitedLinks.add(link)
 		let html = retrieveFromCache(link)
-		if (!html) {
+		if (!html || typeof html !== "string") {
 			try {
-				html = await (
+				html = (await (
 					await fetch(link, { ...init, responseType: "text" })
-				).data
+				).data) as string
 			} catch {
 				return
 			}
@@ -189,15 +189,14 @@ export async function fetchJson<T extends object>(
 ): Promise<T | undefined> {
 	const [link, init] = args
 	visitedLinks.add(link)
-	let jsonObj
-	let obj: T = (jsonObj = retrieveFromCache(link)) && JSON.parse(jsonObj)
+	let obj: T = retrieveFromCache(link) as T
 	if (!obj) {
 		try {
-			obj = (await fetch(link, { ...init, responseType: "json" })).data as T
+			obj = (await fetch(link, { ...init, responseType: "json" })).data
 		} catch {
 			return
 		}
-		cacheResponse(link, JSON.stringify(obj))
+		cacheResponse(link, obj)
 	}
 	return obj
 }
