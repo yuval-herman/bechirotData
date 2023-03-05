@@ -17,9 +17,7 @@ try {
 		if (keys) {
 			for (const key of keys) {
 				const targetId = cacheMap[key]
-				console.log(
-					`ID for ${targetUrl}: ${targetId} cachedSites/${targetId}`
-				)
+				console.log(`ID for ${key}: ${targetId} ./cachedSites/${targetId}`)
 			}
 		} else {
 			console.error(`No ID found for ${targetUrl}`)
