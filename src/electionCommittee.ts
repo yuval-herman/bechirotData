@@ -97,9 +97,8 @@ export default async function scrap(): Promise<(Bechirot | undefined)[]> {
 
 		const rows: string[][] = []
 		nameTd
-			.parent()
-			.parent()
-			.children()
+			.closest("table")
+			.find("tr")
 			.each((_i, tr) => {
 				const row: string[] = []
 				rows.push(row)
