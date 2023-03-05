@@ -1,9 +1,11 @@
-import axios, { AxiosRequestConfig, AxiosResponse } from "axios"
+import axios, { AxiosError, AxiosRequestConfig, AxiosResponse } from "axios"
 import { randomUUID } from "crypto"
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "fs"
 import _ from "lodash"
 import path from "path"
+import { errorLog } from "./utils.js"
 
+const SOURCE = "fetch manager"
 const visitedLinks = new Set<string>()
 const cacheDir = "./cachedSites"
 const infoFilePath = path.join(cacheDir, "/cacheInfo.json")
@@ -25,7 +27,7 @@ function retrieveFromCache(link: string): string | undefined {
 	try {
 		return (JSON.parse(readFileSync(cachePath, "utf-8")) as CachedLink).data
 	} catch (error) {
-		console.error(error, link)
+		errorLog(SOURCE, error + " " + link)
 		if (error instanceof SyntaxError) {
 			delete cacheInfo[link]
 			writeFileSync(infoFilePath, JSON.stringify(cacheInfo))
@@ -65,14 +67,6 @@ const BASE_FETCH_INIT: AxiosRequestConfig = {
 	headers: {
 		"User-Agent":
 			"Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/110.0",
-		// Accept:
-		// 	"text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-		// "Accept-Language": "en-US,en;q=0.5",
-		// "Upgrade-Insecure-Requests": "1",
-		// "Sec-Fetch-Dest": "document",
-		// "Sec-Fetch-Mode": "navigate",
-		// "Sec-Fetch-Site": "cross-site",
-		// "If-Modified-Since": "Fri, 03 Mar 2023 14:37:37 GMT",
 	},
 }
 
@@ -135,9 +129,12 @@ function sendFetch(fetchDetails: QueuedFetch) {
 		)
 		fetchDetails.resolveFunction(value)
 	}
-	const rejectHandler = (reason: any) => {
+	const rejectHandler = (reason: AxiosError) => {
 		removeFetch()
-		console.error(reason)
+		errorLog(
+			SOURCE,
+			`fetch error, url: ${reason.config?.url}, message: ${reason.message}`
+		)
 		fetchDetails.rejectFunction(reason)
 	}
 	fetchPromise.then(thenHandler).catch(rejectHandler)
@@ -156,8 +153,7 @@ export async function fetchText(link: string): Promise<string | undefined> {
 		if (!html) {
 			try {
 				html = await fetchDecode(link)
-			} catch (error) {
-				console.error(error)
+			} catch {
 				return
 			}
 			cacheResponse(link, html)
@@ -176,8 +172,7 @@ export async function fetchJson<T extends object>(
 	if (!obj) {
 		try {
 			obj = (await fetch(link, { responseType: "json" })).data as T
-		} catch (error) {
-			console.error(error)
+		} catch {
 			return
 		}
 		cacheResponse(link, JSON.stringify(obj))
