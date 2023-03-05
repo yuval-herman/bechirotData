@@ -15,11 +15,11 @@ const electionCommitteeLinks: [number, string][] = [
 	[21, "https://votes21.bechirot.gov.il/"],
 	[
 		20,
-		"https://data.gov.il/dataset/votes-knesset/resource/c3db5581-f48d-45fc-b221-e7635e940c41",
+		"https://web.archive.org/web/20151120100848/https://www.votes20.gov.il/nationalresults",
 	],
 	[
 		19,
-		"https://data.gov.il/dataset/votes-knesset/resource/432d3185-545a-41d9-8c72-d10ee515919c?utm_source=go.gov.il&utm_medium=referral",
+		"https://web.archive.org/web/20130830190250/http://www.votes-19.gov.il/nationalresults",
 	],
 	[
 		18,
@@ -42,32 +42,23 @@ const electionCommitteeLinks: [number, string][] = [
 // Names which help us determine the type of a column
 const baseFieldNames = {
 	name: "שם",
-	letters: "סימן",
+	letters: ["סימן", "אותיות"],
 	votes: "קולות",
 	votesPercent: "אחוזים",
 	mandates: "מנדטים",
-} satisfies Record<string, string>
-
-const detectDetailsQuery = _.unzip(
-	["מצביעים", "כשרים", "פסולים"].map((v) =>
-		[v, [...v].reverse().join("")].map((s) => `:contains(${s})`)
-	)
-)
-	.map((v) => v.join(" ~ "))
-	.join(",")
+} satisfies Record<string, string | string[]>
 
 /**
  * Scraping the old committee site is a real challenge.
  * Some site use frames to show data, some use iframes, some tables, some don't.
  */
-
 export default async function scrap(): Promise<(Bechirot | undefined)[]> {
 	console.log("scraping", SOURCE)
 	const bechirot: Bechirot[] = []
 	const scrapLink = async ([num, link]: [number, string]): Promise<void> => {
 		const firstPage = await fetchText(link)
 		if (!firstPage) {
-			errorLog(SOURCE, `couldn't fetch ${link}`)
+			errorLog(SOURCE, `couldn't fetch first page at ${link}`)
 			return
 		}
 		let html: string[] = [firstPage],
@@ -94,7 +85,11 @@ export default async function scrap(): Promise<(Bechirot | undefined)[]> {
 					.flat()
 			)
 			html.length = 0
-			html.push(..._.compact(await Promise.all(requests.map(fetchText))))
+			html.push(
+				..._.compact(
+					await Promise.all(requests.map((url) => fetchText(url)))
+				)
+			)
 		} while (true)
 		if (!nameTd?.length || !$) {
 			return
@@ -114,45 +109,60 @@ export default async function scrap(): Promise<(Bechirot | undefined)[]> {
 						row.push(cleanText($!(cell).text()))
 					})
 			})
+
 		const [header, ...data] = rows
 		const mapping = _.fromPairs(
 			Object.entries(baseFieldNames).map(([field, value]) => [
 				field,
-				header.findIndex((str) => str.includes(value)),
+				headerValueIndex(value),
 			])
 		) as Record<keyof typeof baseFieldNames, number>
 		const parties: Party[] = _.orderBy(
 			data.map((row) =>
 				_.fromPairs(
 					Object.entries(mapping)
-						.map(([field, value]) => {
-							let rowValue: string | number | undefined = row[value] as
-								| string
-								| undefined
-							if (
-								rowValue &&
-								["votes", "mandates", "votesPercent"].includes(field)
-							) {
-								rowValue = parseFloat(rowValue)
+						.map(
+							([field, value]): [
+								keyof Party,
+								string | number | undefined
+							] => {
+								let rowValue: string | number | undefined = row[
+									value
+								] as string | undefined
+								if (
+									rowValue &&
+									["votes", "mandates", "votesPercent"].includes(field)
+								) {
+									rowValue = parseFloat(rowValue)
+								}
+								return [field as keyof Party, rowValue]
 							}
-							return [field, rowValue]
-						})
+						)
 						.concat([["source", SOURCE]])
 				)
-			) as (typeof baseFieldNames & {
-				source: string
-				votes: number
-				mandates: number
-				votesPercent: number
-			})[],
+			),
 			["mandates", "votes"],
 			["desc", "desc"]
-		)
+		) as unknown as Party[]
 
 		bechirot[num - 1] = {
 			parties,
 			bechirotNum: num,
 			source: SOURCE,
+		}
+
+		function headerValueIndex(value: string | string[]): number | undefined {
+			function findIndex(value: string) {
+				return header.findIndex((str) => str.includes(value))
+			}
+			if (_.isArray(value)) {
+				for (const v of value) {
+					const index = findIndex(v)
+					if (index !== -1) return index
+				}
+				return undefined
+			}
+			return findIndex(value)
 		}
 	}
 
@@ -176,10 +186,31 @@ function digLinks(html: string, baseLink: string): string[] {
 
 function findResultsTable(html: string) {
 	const $ = cheerio.load(html)
-	const requiredFields = ["שם", "סימן", "מנדטים"]
-	const nameTd = $(
-		requiredFields.map((val) => `td:contains('${val}')`).join(" ~ ")
-	)
+	const requiredFields = ["שם", ["סימן", "אותיות"], "מנדטים"]
+	let nameTd: cheerio.Cheerio<cheerio.Element> = $()
+	$("td,th").each((_i, el) => {
+		const element = $(el)
+		const text = element.text()
+		const field = requiredFields.find((f) =>
+			_.isArray(f) ? f.some((t) => text.includes(t)) : text.includes(f)
+		)
+		if (!field) return true
+		const filteredFields = _.without(requiredFields, field)
+		element.siblings().each((_i, el) => {
+			const text = $(el).text()
+			const field = filteredFields.find((f) =>
+				_.isArray(f) ? f.some((t) => text.includes(t)) : text.includes(f)
+			)
+			if (!field) return true
+			_.pull(filteredFields, field)
+			return !!filteredFields.length // break loop if empty
+		})
+		if (!filteredFields.length) {
+			nameTd = element
+			return false
+		}
+		return true
+	})
 	return { nameTd, $ }
 }
 
