@@ -1,6 +1,8 @@
 import axios, { AxiosError, AxiosRequestConfig, AxiosResponse } from "axios"
 import { randomUUID } from "crypto"
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "fs"
+import { Agent as httpAgent } from "http"
+import { Agent as httpsAgent } from "https"
 import _ from "lodash"
 import path from "path"
 import { errorLog } from "./utils.js"
@@ -62,13 +64,31 @@ type QueuedFetch = {
 	rejectFunction: (reason?: any) => void
 }
 
+axios.interceptors.response.use(
+	null,
+	(error: AxiosError & { config: { _retryNum?: number } }) => {
+		if (error.config && error.code === "ECONNABORTED") {
+			if (error.config._retryNum === undefined) error.config._retryNum = 1
+			else if (error.config._retryNum <= 0) return error
+			error.config._retryNum--
+			return axios({
+				...error.config,
+				httpAgent: new httpAgent({ family: 4 }),
+				httpsAgent: new httpsAgent({ family: 4 }),
+			})
+		}
+		return error
+	}
+)
+
 const fetchesQueue: QueuedFetch[] = []
-const BASE_FETCH_INIT: AxiosRequestConfig = {
+const BASE_FETCH_INIT = {
 	headers: {
 		"User-Agent":
 			"Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/110.0",
 	},
-}
+	timeout: 5000,
+} satisfies AxiosRequestConfig
 
 function fetch(url: string, init?: AxiosRequestConfig): Promise<AxiosResponse> {
 	let { resolveFunction, rejectFunction, promise } =
@@ -109,7 +129,9 @@ function getPromiseFunctions<T>(): {
 function sendFetch(fetchDetails: QueuedFetch) {
 	console.log(fetchDetails.url)
 
-	const fetchPromise = axios.get(fetchDetails.url, fetchDetails.init)
+	const fetchPromise = axios.get(fetchDetails.url, {
+		...fetchDetails.init,
+	})
 	inProgressFetches.push(fetchPromise)
 	const removeFetch = () => {
 		_.pull(inProgressFetches, fetchPromise)
@@ -140,23 +162,22 @@ function sendFetch(fetchDetails: QueuedFetch) {
 	fetchPromise.then(thenHandler).catch(rejectHandler)
 }
 
-export async function fetchDecode(url: string): Promise<string> {
-	return await (
-		await fetch(url, { responseType: "text" })
-	).data
-}
-
-export async function fetchText(link: string): Promise<string | undefined> {
+export async function fetchText(
+	...args: Parameters<typeof fetch>
+): Promise<string | undefined> {
+	const [link, init] = args
 	if (!visitedLinks.has(link)) {
 		visitedLinks.add(link)
 		let html = retrieveFromCache(link)
 		if (!html) {
 			try {
-				html = await fetchDecode(link)
+				html = await (
+					await fetch(link, { ...init, responseType: "text" })
+				).data
 			} catch {
 				return
 			}
-			cacheResponse(link, html)
+			html && cacheResponse(link, html)
 		}
 		return html
 	}
@@ -164,14 +185,15 @@ export async function fetchText(link: string): Promise<string | undefined> {
 }
 
 export async function fetchJson<T extends object>(
-	link: string
+	...args: Parameters<typeof fetch>
 ): Promise<T | undefined> {
+	const [link, init] = args
 	visitedLinks.add(link)
 	let jsonObj
 	let obj: T = (jsonObj = retrieveFromCache(link)) && JSON.parse(jsonObj)
 	if (!obj) {
 		try {
-			obj = (await fetch(link, { responseType: "json" })).data as T
+			obj = (await fetch(link, { ...init, responseType: "json" })).data as T
 		} catch {
 			return
 		}
