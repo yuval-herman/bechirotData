@@ -174,10 +174,11 @@ export async function fetchText(
 				html = (await (
 					await fetch(link, { ...init, responseType: "text" })
 				).data) as string
-			} catch {
-				return
+			} finally {
+				typeof html === "string"
+					? html && cacheResponse(link, html)
+					: (html = undefined)
 			}
-			html && cacheResponse(link, html)
 		}
 		return html
 	}
