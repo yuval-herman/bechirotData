@@ -19,8 +19,8 @@ async function main() {
 		JSON.stringify(
 			_.zip(...data).map(([first, ...p]) =>
 				_.mergeWith(first, ...p, (objValue: unknown, srcValue: unknown) => {
-					if (_.isNil(objValue)) return srcValue
-					if (_.isNil(srcValue)) return objValue
+					if (_.isNil(objValue) || _.isNaN(objValue)) return srcValue
+					if (_.isNil(srcValue) || _.isNaN(srcValue)) return objValue
 					if (_.isPlainObject(objValue)) return
 					if (_.isArray(objValue)) {
 						if (objValue[0] === "conflict:")
